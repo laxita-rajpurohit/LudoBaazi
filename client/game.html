@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ludobaazi — Game</title>
+  <meta name="description" content="Ludobaazi real-time multiplayer Ludo game board." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/board.css" />
+</head>
+<body class="game-page">
+
+  <!-- ── Top Bar ── -->
+  <header class="topbar">
+    <a href="/" class="topbar-logo">🎲 Ludobaazi</a>
+    <div class="topbar-room">
+      Room: <strong id="topbar-room-code">──────</strong>
+    </div>
+  </header>
+
+  <!-- ── Main Layout ── -->
+  <main class="game-layout">
+
+    <!-- ── Left Panel: Player 1 Info ── -->
+    <aside class="player-panel player-panel--left" id="panel-player0">
+      <div class="player-badge player-badge--green">
+        <span class="player-badge-icon">🟢</span>
+        <div>
+          <div class="player-badge-name">Player 1</div>
+          <div class="player-badge-color">Green</div>
+        </div>
+      </div>
+      <div class="token-status" id="token-status-green">
+        <div class="token-status-label">Tokens home</div>
+        <div class="token-count" id="home-count-green">0 / 4</div>
+      </div>
+    </aside>
+
+    <!-- ── Center: Board + Dice ── -->
+    <div class="center-column">
+
+      <!-- Turn Indicator Banner -->
+      <div class="turn-banner" id="turn-banner">
+        <div class="turn-dot" id="turn-dot"></div>
+        <span id="turn-text">Waiting for players…</span>
+      </div>
+
+      <!-- Ludo Board -->
+      <div class="board-container">
+        <div class="ludo-board" id="ludo-board">
+          <!-- Board cells rendered by board.js -->
+        </div>
+      </div>
+
+      <!-- Dice Area -->
+      <div class="dice-area">
+        <div class="dice-face-wrap">
+          <div class="dice-face" id="dice-face" aria-label="Dice">
+            <span id="dice-icon">🎲</span>
+          </div>
+          <div class="dice-value-label" id="dice-value-label">—</div>
+        </div>
+        <button class="btn-roll" id="btn-roll-dice" disabled>
+          Roll Dice
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ── Right Panel: Player 2 Info ── -->
+    <aside class="player-panel player-panel--right" id="panel-player1">
+      <div class="player-badge player-badge--red">
+        <span class="player-badge-icon">🔴</span>
+        <div>
+          <div class="player-badge-name">Player 2</div>
+          <div class="player-badge-color">Red</div>
+        </div>
+      </div>
+      <div class="token-status" id="token-status-red">
+        <div class="token-status-label">Tokens home</div>
+        <div class="token-count" id="home-count-red">0 / 4</div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- ── Winner Modal ── -->
+  <div class="modal-overlay" id="winner-modal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-confetti" id="confetti-container"></div>
+      <div class="winner-trophy">🏆</div>
+      <h2 class="winner-title" id="winner-title">Player 1 Wins!</h2>
+      <p class="winner-sub" id="winner-sub">Congratulations on your victory!</p>
+      <button class="btn-play-again" id="btn-play-again">Play Again</button>
+    </div>
+  </div>
+
+  <!-- ── Disconnected Modal ── -->
+  <div class="modal-overlay" id="disconnect-modal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="winner-trophy">⚠️</div>
+      <h2 class="winner-title">Opponent Disconnected</h2>
+      <p class="winner-sub">The game has ended.</p>
+      <button class="btn-play-again" id="btn-home">Back to Home</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/socket.js"></script>
+  <script src="js/board.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>
