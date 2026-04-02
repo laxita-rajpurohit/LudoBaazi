@@ -1,176 +1,147 @@
 /* ─────────────────────────────────────────────────
-   board.css — Ludobaazi Ludo Board Styles
-   Standard 15×15 Ludo grid
+   board.css — Ludo King Inspired Board Logic
 ───────────────────────────────────────────────── */
 
-/* ─── Board Grid ───────────────────────────────── */
+:root {
+    --br-blue:   #00aeef;
+    --br-red:    #ed1c24;
+    --br-green:  #00a651;
+    --br-yellow: #fff200;
+}
+
 .ludo-board {
-  display: grid;
-  grid-template-columns: repeat(15, 1fr);
-  grid-template-rows: repeat(15, 1fr);
-  width: min(540px, 90vw);
-  height: min(540px, 90vw);
-  border: 3px solid #064E3B;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
-  position: relative;
+    display: grid;
+    grid-template-columns: repeat(15, 1fr);
+    grid-template-rows: repeat(15, 1fr);
+    width: min(600px, 94vw);
+    height: min(600px, 94vw);
+    border: 5px solid #1e293b;
+    border-radius: 12px;
+    background: #f8fafc;
+    box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+    user-select: none;
+    padding: 2px;
 }
 
-/* ─── Base Cell ────────────────────────────────── */
 .cell {
-  border: 0.5px solid rgba(0,0,0,0.1);
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: default;
-  transition: background 0.15s;
+    border: 0.2px solid rgba(0, 0, 0, 0.05);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-/* ─── Color Zones ──────────────────────────────── */
-/* Green home area — top right (cols 10-15, rows 1-6) */
-.cell.zone-green { background: #DCFCE7; }
-/* Red home area   — top left  (cols 1-6,  rows 1-6)  */
-.cell.zone-red   { background: #FEE2E2; }
-/* Yellow yard     — bottom left  (cols 1-6, rows 10-15)  */
-.cell.zone-yellow { background: #FEF9C3; }
-/* Blue yard       — bottom right (cols 10-15, rows 10-15) */
-.cell.zone-blue   { background: #DBEAFE; }
+/* ── Quadrant Backgrounds ── */
+.zone-green  { background: #ffffff; position: relative; }
+.zone-red    { background: #ffffff; position: relative; }
+.zone-yellow { background: #ffffff; position: relative; }
+.zone-blue   { background: #ffffff; position: relative; }
 
-/* Inner yard squares (inside home areas) */
-.cell.yard-inner-green { background: #16A34A; border-radius: 4px; }
-.cell.yard-inner-red   { background: #DC2626; border-radius: 4px; }
-.cell.yard-inner-yellow{ background: #CA8A04; border-radius: 4px; }
-.cell.yard-inner-blue  { background: #2563EB; border-radius: 4px; }
+.zone-green::after { content: ''; position: absolute; inset: 12%; background: var(--br-green); opacity: 0.1; border-radius: 20%; }
+.zone-red::after   { content: ''; position: absolute; inset: 12%; background: var(--br-red); opacity: 0.1; border-radius: 20%; }
+.zone-yellow::after{ content: ''; position: absolute; inset: 12%; background: var(--br-yellow); opacity: 0.1; border-radius: 20%; }
+.zone-blue::after  { content: ''; position: absolute; inset: 12%; background: var(--br-blue); opacity: 0.1; border-radius: 20%; }
 
-/* ─── White path cells ─────────────────────────── */
-.cell.path { background: #FFFFFF; }
+/* ── Path Rendering ── */
+.path-cell { background: #ffffff; }
 
-/* ─── Safe cells ───────────────────────────────── */
-.cell.safe::after {
-  content: '★';
-  font-size: 0.65rem;
-  color: rgba(0,0,0,0.25);
-  position: absolute;
-  bottom: 1px; right: 2px;
-  line-height: 1;
+.home-stretch-blue   { background: #bfdbfe; border: 1px solid rgba(0,174,239,0.2); }
+.home-stretch-red    { background: #fecaca; border: 1px solid rgba(237,28,36,0.2); }
+.home-stretch-green  { background: #bbf7d0; border: 1px solid rgba(0,166,81,0.2); }
+.home-stretch-yellow { background: #fef08a; border: 1px solid rgba(255,242,0,0.2); }
+
+/* ── Safe Cell Icons (Ludo King Stars) ── */
+.safe-cell::before {
+    content: '★';
+    font-size: 1.2rem;
+    color: #cbd5e1;
+    line-height: 1;
 }
 
-/* ─── Colored path entry cells ─────────────────── */
-.cell.path-green  { background: #DCFCE7; }
-.cell.path-red    { background: #FEE2E2; }
+/* Start positions are safe and colored */
+.cell[id^="cell-15-7"] { background: #bfdbfe !important; } /* Blue start */
+.cell[id^="cell-9-1"]  { background: #fecaca !important; } /* Red start */
+.cell[id^="cell-1-9"]  { background: #bbf7d0 !important; } /* Green start */
+.cell[id^="cell-7-15"] { background: #fef08a !important; } /* Yellow start */
 
-/* ─── Home stretch cells ────────────────────────── */
-.cell.home-stretch-green { background: #86EFAC; }
-.cell.home-stretch-red   { background: #FCA5A5; }
+.cell[id^="cell-15-7"]::before { color: var(--br-blue); }
+.cell[id^="cell-9-1"]::before  { color: var(--br-red); }
+.cell[id^="cell-1-9"]::before  { color: var(--br-green); }
+.cell[id^="cell-7-15"]::before { color: var(--br-yellow); }
 
-/* ─── Center home triangle ──────────────────────── */
-.cell.center-home {
-  background: transparent;
-  border: none;
+/* ── Finish Area Design ── */
+.home-center { background: #f1f5f9; }
+.finish {
+    background: conic-gradient(
+        from 0deg,
+        var(--br-green) 0deg 90deg,
+        var(--br-red) 90deg 180deg,
+        var(--br-blue) 180deg 270deg,
+        var(--br-yellow) 270deg 360deg
+    );
+    border: none !important;
 }
-/* The center 3x3 block forms a flower */
-.cell.center-nw { background: linear-gradient(315deg, #fff 50%, #FEE2E2 50%); }
-.cell.center-ne { background: linear-gradient(225deg, #fff 50%, #DCFCE7 50%); }
-.cell.center-sw { background: linear-gradient(45deg,  #fff 50%, #FEF9C3 50%); }
-.cell.center-se { background: linear-gradient(135deg, #fff 50%, #DBEAFE 50%); }
-.cell.center-mid {
-  background: linear-gradient(135deg, #DCFCE7 25%, #FEE2E2 25% 50%, #FEF9C3 50% 75%, #DBEAFE 75%);
-  border: none;
-}
 
-/* ─── Tokens ────────────────────────────────────── */
+/* ── Token Design "Pin Style" ── */
 .token {
-  width: 72%;
-  height: 72%;
-  border-radius: 50%;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  border: 2.5px solid rgba(0,0,0,0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.55rem;
-  font-weight: 800;
-  color: rgba(255,255,255,0.9);
-  cursor: default;
-  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s;
-  z-index: 5;
-  user-select: none;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-}
-.token.green-token {
-  background: radial-gradient(circle at 35% 35%, #4ADE80, #16A34A);
-  border-color: #15803D;
-}
-.token.red-token {
-  background: radial-gradient(circle at 35% 35%, #F87171, #DC2626);
-  border-color: #B91C1C;
+    width: 78%;
+    height: 78%;
+    border-radius: 50% 50% 50% 2px;
+    transform: rotate(-45deg) translate(2px, -2px);
+    position: absolute;
+    z-index: 50;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.4);
+    border: 2px solid rgba(255,255,255,0.8);
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Token in yard — smaller to stack 4 in a 4-quadrant layout */
-.token.in-yard {
-  width: 40%;
-  height: 40%;
-  cursor: default;
-}
+.token-blue   { background: radial-gradient(circle at 30% 30%, #00aeef, #007bbd); }
+.token-red    { background: radial-gradient(circle at 30% 30%, #ed1c24, #c4121b); }
+.token-green  { background: radial-gradient(circle at 30% 30%, #00a651, #007a3c); }
+.token-yellow { background: radial-gradient(circle at 30% 30%, #fff200, #dab900); }
 
-/* Clickable / valid move token */
 .token.clickable {
-  cursor: pointer;
-  animation: tokenPulse 0.9s ease-in-out infinite;
-  box-shadow: 0 0 0 3px rgba(255,255,0,0.6), 0 2px 8px rgba(0,0,0,0.3);
-}
-@keyframes tokenPulse {
-  0%, 100% { transform: translate(-50%, -50%) scale(1); }
-  50%       { transform: translate(-50%, -50%) scale(1.18); }
+    cursor: pointer;
+    animation: tokenBounce 1s infinite alternate;
+    z-index: 100;
 }
 
-/* Token hover */
-.token.clickable:hover {
-  transform: translate(-50%, -50%) scale(1.28) !important;
-  box-shadow: 0 0 0 4px rgba(255,215,0,0.8), 0 4px 12px rgba(0,0,0,0.3) !important;
-  animation: none;
-  z-index: 10;
+@keyframes tokenBounce {
+    0% { transform: rotate(-45deg) translate(2px, -2px) scale(1); }
+    100% { transform: rotate(-45deg) translate(2px, -8px) scale(1.15); box-shadow: 5px 10px 15px rgba(0,0,0,0.5); }
 }
 
-/* Multiple tokens on same cell — offset them */
-.cell .token:nth-child(2) { transform: translate(calc(-50% + 5px), calc(-50% + 5px)); }
-.cell .token:nth-child(3) { transform: translate(calc(-50% - 5px), calc(-50% + 5px)); }
-.cell .token:nth-child(4) { transform: translate(calc(-50% + 5px), calc(-50% - 5px)); }
-
-/* ─── Yard Token Positions (4 quadrants) ────────── */
-.yard-token-0 { transform: translate(calc(-50% - 9px), calc(-50% - 9px)); }
-.yard-token-1 { transform: translate(calc(-50% + 9px), calc(-50% - 9px)); }
-.yard-token-2 { transform: translate(calc(-50% - 9px), calc(-50% + 9px)); }
-.yard-token-3 { transform: translate(calc(-50% + 9px), calc(-50% + 9px)); }
-
-.yard-token-0.clickable { animation: yardPulse0 0.9s ease-in-out infinite; }
-.yard-token-1.clickable { animation: yardPulse1 0.9s ease-in-out infinite; }
-.yard-token-2.clickable { animation: yardPulse2 0.9s ease-in-out infinite; }
-.yard-token-3.clickable { animation: yardPulse3 0.9s ease-in-out infinite; }
-
-@keyframes yardPulse0 {
-  0%,100%{ transform: translate(calc(-50% - 9px), calc(-50% - 9px)) scale(1); }
-  50%     { transform: translate(calc(-50% - 9px), calc(-50% - 9px)) scale(1.2); }
-}
-@keyframes yardPulse1 {
-  0%,100%{ transform: translate(calc(-50% + 9px), calc(-50% - 9px)) scale(1); }
-  50%     { transform: translate(calc(-50% + 9px), calc(-50% - 9px)) scale(1.2); }
-}
-@keyframes yardPulse2 {
-  0%,100%{ transform: translate(calc(-50% - 9px), calc(-50% + 9px)) scale(1); }
-  50%     { transform: translate(calc(-50% - 9px), calc(-50% + 9px)) scale(1.2); }
-}
-@keyframes yardPulse3 {
-  0%,100%{ transform: translate(calc(-50% + 9px), calc(-50% + 9px)) scale(1); }
-  50%     { transform: translate(calc(-50% + 9px), calc(-50% + 9px)) scale(1.2); }
+.token.clickable::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border: 2px solid white;
+    border-radius: 50%;
+    animation: ping 1s infinite;
 }
 
-/* ─── Highlight valid landing cell ─────────────── */
-.cell.highlight-valid {
-  background: rgba(253,224,71,0.3) !important;
+@keyframes ping {
+    0% { transform: scale(0.8); opacity: 1; }
+    100% { transform: scale(1.5); opacity: 0; }
 }
+
+/* ── Stacking Logic (Modified for pin style) ── */
+.stacked .token:nth-child(1) { transform: rotate(-45deg) translate(-6px, -6px) scale(0.65); }
+.stacked .token:nth-child(2) { transform: rotate(-45deg) translate(6px, 6px) scale(0.65); }
+.stacked .token:nth-child(3) { transform: rotate(-45deg) translate(-6px, 6px) scale(0.65); }
+.stacked .token:nth-child(4) { transform: rotate(-45deg) translate(6px, -6px) scale(0.65); }
+
+.cell.can-move {
+    background: rgba(255, 255, 255, 0.2) !important;
+}
+.cell.can-move::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border: 2px dashed rgba(0,0,0,0.1);
+    border-radius: 50%;
+    animation: rotate 4s linear infinite;
+}
+
+@keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

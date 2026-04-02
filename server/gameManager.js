@@ -1,10 +1,14 @@
 /**
  * gameManager.js — Room registry and lifecycle management
+ * Orchestrates rooms and connects them to the GameEngine.
  */
 
-const { createInitialState, handleDiceRoll, moveToken, getValidMoves } = require('./gameLogic');
+const GameEngine = require('./gameEngine');
 
 const rooms = new Map(); // roomCode → room object
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const COLORS = ['blue', 'red', 'green', 'yellow'];
 
 // ─── Generate Room Code ────────────────────────────────────────────────────────
 function generateCode() {
@@ -16,11 +20,14 @@ function generateCode() {
   return rooms.get(code) ? generateCode() : code;
 }
 
+/**
+ * Create a new room for a multiplayer game
+ */
 function createRoom(socketId, viewerId) {
   const code = generateCode();
   const room = {
     code,
-    players: [{ id: socketId, viewerId, playerIndex: 0, color: 'green' }],
+    players: [{ id: socketId, viewerId, playerIndex: 0, color: COLORS[0] }],
     gameState: null,
     status: 'waiting',
     isAI: false
@@ -29,110 +36,131 @@ function createRoom(socketId, viewerId) {
   return { success: true, code };
 }
 
-// ─── Create AI Game ────────────────────────────────────────────────────────────
+/**
+ * Create a single-player game against AI
+ */
 function createAIGame(socketId, viewerId) {
   const code = 'AI_' + generateCode().substring(0, 4);
+  const players = [
+    { id: socketId, viewerId, playerIndex: 0, color: COLORS[0] },
+    { id: 'CPU', viewerId: 'CPU_VIEWER', playerIndex: 1, color: COLORS[1] }
+  ];
   const room = {
     code,
-    players: [
-      { id: socketId, viewerId, playerIndex: 0, color: 'green' },
-      { id: 'CPU', viewerId: 'CPU_VIEWER', playerIndex: 1, color: 'red' }
-    ],
-    gameState: null,
+    players,
+    gameState: GameEngine.createGame(code, players),
     status: 'playing',
     isAI: true
   };
-  room.gameState = createInitialState(code, room.players);
-  room.gameState.isAI = true; // Flag for frontend UI
   rooms.set(code, room);
   return { success: true, room };
 }
 
-// ─── Join Room ─────────────────────────────────────────────────────────────────
+/**
+ * Join an existing room
+ */
 function joinRoom(code, socketId, viewerId) {
   const room = rooms.get(code);
   if (!room) return { success: false, message: 'Room not found.' };
 
-  // Check if player is already in this room (Re-connection)
+  // Re-connection Logic
   const existingPlayer = room.players.find(p => p.viewerId === viewerId);
   if (existingPlayer) {
-    existingPlayer.id = socketId; // Update to latest socket ID
-    console.log(`[Room] ${code} — Player re-connected: ${viewerId}`);
+    existingPlayer.id = socketId;
+    console.log(`[Room] ${code} — Player re-joined: ${viewerId}`);
     return { success: true, room, isRejoin: true };
   }
 
-  // New player joining
-  if (room.status !== 'waiting') return { success: false, message: 'Game already in progress.' };
-  if (room.players.length >= 2) return { success: false, message: 'Room is full.' };
+  // New Join Logic
+  if (room.status !== 'waiting') return { success: false, message: 'Game in progress.' };
+  if (room.players.length >= 4) return { success: false, message: 'Room full.' };
 
-  room.players.push({ id: socketId, viewerId, playerIndex: 1, color: 'red' });
-  
-  // Mandatory exact logs
-  console.log(`Player joined room: ${code}`);
-  console.log(`Total players in room: ${room.players.length}`);
+  const playerIndex = room.players.length;
+  room.players.push({
+    id: socketId,
+    viewerId,
+    playerIndex,
+    color: COLORS[playerIndex]
+  });
+
+  console.log(`[Join] ${viewerId} joined room ${code}`);
 
   let isGameStarted = false;
-  if (room.players.length === 2) {
+  if (room.players.length === 2) { // Auto-start for 2 players, but wait for more if desired? Prompt says 2-player for now.
     room.status = 'playing';
-    room.gameState = createInitialState(code, room.players);
-    // Explicit colors set in player assignment (already done: 0=green, 1=red)
+    room.gameState = GameEngine.createGame(code, room.players);
     isGameStarted = true;
-    console.log(`[Game] ${code} — Game started`);
+    console.log(`[Game] ${code} — Started`);
   }
 
   return { success: true, room, isRejoin: false, isGameStarted };
 }
 
-// ─── Process Dice Roll ─────────────────────────────────────────────────────────
+/**
+ * Process a dice roll action
+ */
 function processRoll(code, socketId) {
   const room = rooms.get(code);
-  if (!room || !room.gameState) return { success: false, message: 'Room not found.' };
+  if (!room || !room.gameState) return { success: false, message: 'Game not found.' };
 
   const gs = room.gameState;
-  if (gs.status !== 'playing') return { success: false, message: 'Game over.' };
+  if (gs.status !== 'playing') return { success: false, message: 'Game not active.' };
 
   const player = gs.players[gs.currentTurn];
   if (player.id !== socketId) return { success: false, message: 'Not your turn.' };
-  if (gs.diceRolled) return { success: false, message: 'Already rolled.' };
+  if (gs.diceRolled) return { success: false, message: 'Dice already rolled.' };
 
-  const result = handleDiceRoll(gs, gs.currentTurn);
-  room.gameState = result.state;
+  const diceValue = GameEngine.rollDice();
+  gs.diceValue = diceValue;
+  gs.diceRolled = true;
 
-  return { success: true, ...result };
+  const validMoves = GameEngine.getValidMoves(gs, diceValue);
+  
+  let autoPass = false;
+  if (validMoves.length === 0) {
+    // If no moves and not a 6, pass turn
+    if (diceValue !== 6) {
+      gs.currentTurn = (gs.currentTurn + 1) % gs.players.length;
+    }
+    gs.diceValue = null;
+    gs.diceRolled = false;
+    autoPass = true;
+  }
+
+  console.log(`[Dice] ${code} — ${player.color} rolled ${diceValue}`);
+  return { success: true, diceValue, validMoves, autoPass, state: gs };
 }
 
-// ─── Process Move ──────────────────────────────────────────────────────────────
+/**
+ * Process a token movement action
+ */
 function processMove(code, socketId, tokenId) {
   const room = rooms.get(code);
-  if (!room || !room.gameState) return { success: false, message: 'Room not found.' };
+  if (!room || !room.gameState) return { success: false, message: 'Game not found.' };
 
   const gs = room.gameState;
-  if (gs.status !== 'playing') return { success: false, message: 'Game over.' };
-
   const player = gs.players[gs.currentTurn];
   if (player.id !== socketId) return { success: false, message: 'Not your turn.' };
-  if (!gs.diceRolled) return { success: false, message: 'Roll dice first.' };
-  if (!gs.validMoves.includes(tokenId)) return { success: false, message: 'Invalid move.' };
+  if (!gs.diceRolled) return { success: false, message: 'Roll first.' };
 
-  const result = moveToken(gs, gs.currentTurn, tokenId, gs.diceValue);
-  room.gameState = result.state;
+  const isValid = GameEngine.isValidMove(gs, tokenId, gs.diceValue);
+  if (!isValid) return { success: false, message: 'Invalid move selection.' };
 
-  return { success: true, ...result };
+  const { extraTurn, logMessage } = GameEngine.applyMove(gs, tokenId, gs.diceValue);
+  
+  console.log(`[Move] ${code} — ${logMessage}`);
+  return { success: true, state: gs, extraTurn };
 }
 
-// ─── Get Room ──────────────────────────────────────────────────────────────────
 function getRoom(code) {
   return rooms.get(code);
 }
 
-// ─── Handle Disconnect ─────────────────────────────────────────────────────────
 function handleDisconnect(socketId) {
-  // We don't remove players anymore, we just let them disconnect.
-  // Their viewerId remains in the room for re-connection.
   for (const [code, room] of rooms.entries()) {
     const player = room.players.find(p => p.id === socketId);
     if (player) {
-      console.log(`[Room] ${code} — Player disconnected (waiting for reconnect): ${player.viewerId}`);
+      console.log(`[Room] ${code} — Disconnect: ${player.viewerId}`);
       return { code, room, player };
     }
   }

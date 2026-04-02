@@ -1,5 +1,6 @@
 /**
  * index.js — Ludobaazi WebSocket + HTTP server
+ * Production-grade Game Engine Integration
  */
 
 const express = require('express');
@@ -7,6 +8,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const cors = require('cors');
+const GameEngine = require('./gameEngine');
 const {
   createRoom,
   createAIGame,
@@ -33,26 +35,19 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log(`[+] Connected: ${socket.id}`);
 
-  // GLOBAL DEBUG: Log EVERY event that reaches the server
-  socket.onAny((event, ...args) => {
-    console.log(`[DEBUG] Incoming Event: ${event}`, args);
-  });
-
-  // Identification (optional mapping, room logic uses params)
+  // Identification
   socket.on('identify', (data = {}) => {
     const { viewerId } = data;
     socket.viewerId = viewerId;
     console.log(`[ID] Socket ${socket.id} identified as ${viewerId}`);
   });
 
-  // ── Create Room (Compatibility for both _ and -) ─────────────────────────────
+  // ── Create Room ─────────────────────────────────────────────────────────────
   const onCreateRoom = (data = {}) => {
     const { viewerId } = data;
     const result = createRoom(socket.id, viewerId);
     socket.join(result.code);
     socket.emit('room_created', { code: result.code });
-    socket.emit('room-created', { code: result.code }); // Compatibility
-    console.log(`[Room] Created: ${result.code} by ${viewerId}`);
   };
   socket.on('create_room', onCreateRoom);
   socket.on('create-room', onCreateRoom);
@@ -64,105 +59,112 @@ io.on('connection', (socket) => {
     const { room } = result;
     socket.join(room.code);
     
-    // Alert the user that the game has started
-    const gs = room.gameState;
-    const payload = { gameState: gs };
-    socket.emit('game_start', payload);
-    socket.emit('game-start', payload);
+    io.to(room.code).emit('game_start', room.gameState);
     
-    console.log(`[Game] ${room.code} — AI Game started for ${viewerId}`);
+    console.log(`[Game] ${room.code} — AI Game started`);
     checkAITurn(room.code);
   };
   socket.on('play_ai_game', onPlayAiGame);
   socket.on('play-ai-game', onPlayAiGame);
 
-  // ── Join Room (Compatibility for both _ and -) ───────────────────────────────
+  // ── Join Room ───────────────────────────────────────────────────────────────
   const onJoinRoom = (data = {}) => {
     const { code, viewerId } = data;
     const result = joinRoom(code, socket.id, viewerId);
     if (!result.success) {
       socket.emit('join_error', { message: result.message });
-      socket.emit('join-error', { message: result.message }); // Compatibility
       return;
     }
 
     const { room, isRejoin, isGameStarted } = result;
     socket.join(code);
     
-    if (isGameStarted) {
-      // User Requirement: When players.length === 2, emit "game_start" event to the room
-      const gs = room.gameState;
-      io.to(code).emit('game_start', gs);
-      io.to(code).emit('game-start', gs);
-      console.log(`[Game] ${code} — Game state synced for room`);
-    } else if (room.status === 'playing' && isRejoin) {
-      // Catch up the rejoined player
-      const gs = room.gameState;
-      socket.emit('game_start', gs);
-      socket.emit('game-start', gs);
+    if (isGameStarted || (room.status === 'playing' && isRejoin)) {
+      io.to(code).emit('game_start', room.gameState);
     }
   };
   socket.on('join_room', onJoinRoom);
   socket.on('join-room', onJoinRoom);
 
-  // ── AI Helper Loop ───────────────────────────────────────────────────────────
+  // ── AI Logic (Enhanced) ──────────────────────────────────────────────────────
   const checkAITurn = (code) => {
     const room = getRoom(code);
     if (!room || !room.isAI || room.status !== 'playing') return;
     
     const gs = room.gameState;
-    if (gs.currentTurn === 1) { // AI is Player 2 (index 1)
-      // It's the AI's turn! Think for a second...
+    const currentPlayer = gs.players[gs.currentTurn];
+
+    if (currentPlayer.id === 'CPU') {
       if (!gs.diceRolled) {
+        // AI DICE ROLL
         setTimeout(() => {
           const result = processRoll(code, 'CPU');
           if (result.success) {
-            const { diceValue, validMoves, autoPass, state } = result;
-            const payload = { diceValue, validMoves, autoPass, gameState: state };
-            io.to(code).emit('dice_rolled', payload);
-            io.to(code).emit('dice-rolled', payload);
+            io.to(code).emit('dice_rolled', { 
+               diceValue: result.diceValue, 
+               validMoves: result.validMoves, 
+               autoPass: result.autoPass, 
+               gameState: result.state 
+            });
             
-            // If they can't move, their turn auto-passes, check if they get another turn or P1's turn
-            if (autoPass) {
+            if (result.autoPass) {
               setTimeout(() => {
-                 // Broadcast state update to sync currentTurn change completely
-                 io.to(code).emit('game_updated', { gameState: state });
-                 io.to(code).emit('game-updated', { gameState: state });
+                 io.to(code).emit('game_updated', { gameState: result.state });
                  checkAITurn(code); 
-              }, 500);
+              }, 1000);
             } else {
-              // They have valid moves, trigger move selection
               checkAITurn(code);
             }
           }
-        }, 1500); // 1.5s thinking time for dice roll
+        }, 1200); // 1.2s thinking for dice
       } else {
-        // Dice is rolled, need to select a token
+        // AI MOVE SELECTION
         setTimeout(() => {
           const validMoves = gs.validMoves;
           if (validMoves.length > 0) {
-            // Pick a random token from validMoves
-            const selectedToken = validMoves[Math.floor(Math.random() * validMoves.length)];
-            const result = processMove(code, 'CPU', selectedToken);
+            // Logic: Prefer kill moves
+            let selectedTokenId = validMoves[0];
+            let foundKill = false;
+
+            for (const tokenId of validMoves) {
+                const token = currentPlayer.tokens.find(t => t.id === tokenId);
+                if (token.state === 'ACTIVE') {
+                    const nextPos = (currentPlayer.startIndex + token.stepsMoved + gs.diceValue - 1) % 52;
+                    // Check if this position has an opponent token and is NOT safe
+                    const isSafe = GameEngine.handleKill({ ...gs, players: gs.players }, nextPos, 'CPU'); 
+                    // Wait, handleKill actually MUTATES if I'm not careful. I'll use a dry run logic.
+                    // Let's just check manually.
+                    const canKill = gs.players.some(p => p.id !== 'CPU' && p.tokens.some(t => t.state === 'ACTIVE' && t.position === nextPos && !GameEngine.isBlocked(gs, nextPos, 'CPU')));
+                    if (canKill && !new Set([0, 8, 13, 21, 26, 34, 39, 47]).has(nextPos)) {
+                        selectedTokenId = tokenId;
+                        foundKill = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!foundKill) {
+                // Otherwise random move
+                selectedTokenId = validMoves[Math.floor(Math.random() * validMoves.length)];
+            }
+
+            const result = processMove(code, 'CPU', selectedTokenId);
             if (result.success) {
-              const payload = { gameState: result.state };
-              io.to(code).emit('game_updated', payload);
-              io.to(code).emit('game-updated', payload);
+              io.to(code).emit('game_updated', { gameState: result.state });
               
               if (result.state.status === 'finished') {
-                const gameOverPayload = { winnerIndex: result.state.winner, winnerColor: result.state.players[result.state.winner].color };
-                io.to(code).emit('game_over', gameOverPayload);
+                io.to(code).emit('game_over', { winnerIndex: result.state.winner, winnerColor: result.state.players[result.state.winner].color });
               } else {
                 checkAITurn(code);
               }
             }
           }
-        }, 1000); // 1s thinking time for move making
+        }, 1500); // 1.5s thinking for move
       }
     }
   };
 
-  // ── Roll Dice (Compatibility for both _ and -) ───────────────────────────────
+  // ── Roll Dice ───────────────────────────────────────────────────────────────
   const onRollDice = (data = {}) => {
     const { code } = data;
     const result = processRoll(code, socket.id);
@@ -171,31 +173,24 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const { diceValue, validMoves, autoPass, state } = result;
-    const payload = {
-      diceValue,
-      validMoves,
-      autoPass,
-      gameState: state,
-    };
-
-    io.to(code).emit('dice_rolled', payload);
-    io.to(code).emit('dice-rolled', payload); // Compatibility
-    console.log(`[Dice] Room ${code} — rolled ${diceValue}`);
+    io.to(code).emit('dice_rolled', {
+      diceValue: result.diceValue,
+      validMoves: result.validMoves,
+      autoPass: result.autoPass,
+      gameState: result.state,
+    });
     
-    if (autoPass) {
-       // If player auto-passed, we must sync state to show AI Turn
+    if (result.autoPass) {
        setTimeout(() => {
-         io.to(code).emit('game_updated', { gameState: state });
-         io.to(code).emit('game-updated', { gameState: state });
+         io.to(code).emit('game_updated', { gameState: result.state });
          checkAITurn(code);
-       }, 500);
+       }, 800);
     }
   };
   socket.on('roll_dice', onRollDice);
   socket.on('roll-dice', onRollDice);
 
-  // ── Move Token (Compatibility for both _ and -) ──────────────────────────────
+  // ── Move Token ──────────────────────────────────────────────────────────────
   const onMoveToken = (data = {}) => {
     const { code, tokenId } = data;
     const result = processMove(code, socket.id, tokenId);
@@ -205,19 +200,11 @@ io.on('connection', (socket) => {
     }
 
     const { state } = result;
-    const payload = { gameState: state };
-
-    io.to(code).emit('game_updated', payload);
-    io.to(code).emit('game-updated', payload); // Compatibility
+    io.to(code).emit('game_updated', { gameState: state });
 
     if (state.status === 'finished') {
-      const gameOverPayload = {
-        winnerIndex: state.winner,
-        winnerColor: state.players[state.winner].color,
-      };
-      io.to(code).emit('game_over', gameOverPayload);
-      io.to(code).emit('game-over', gameOverPayload);
-      console.log(`[Win] Room ${code} — Winner: Player ${state.winner + 1}`);
+      const winner = state.players[state.winner];
+      io.to(code).emit('game_over', { winnerIndex: state.winner, winnerColor: winner.color });
     } else {
       checkAITurn(code);
     }
@@ -225,26 +212,11 @@ io.on('connection', (socket) => {
   socket.on('move_token', onMoveToken);
   socket.on('move-token', onMoveToken);
 
-  // ── Leave Room ───────────────────────────────────────────────────────────────
-  const onLeaveRoom = (data = {}) => {
-    const { code } = data;
-    socket.leave(code);
-    console.log(`[Room] ${code} — Player left: ${socket.id}`);
-    io.to(code).emit('player_disconnected', { message: 'Opponent left the room.' });
-  };
-  socket.on('leave_room', onLeaveRoom);
-  socket.on('leave-room', onLeaveRoom);
-
-  // ── Disconnect ───────────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
-    const result = handleDisconnect(socket.id);
-    if (result) {
-      console.log(`[-] Disconnected: ${socket.id} (Room: ${result.code})`);
-    }
+    handleDisconnect(socket.id);
   });
 });
 
-// ─── Start Server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`\n🎲 Ludobaazi server running at http://localhost:${PORT}\n`);

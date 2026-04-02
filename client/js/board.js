@@ -1,170 +1,185 @@
-console.log('Ludo Board Ready');
+/**
+ * board.js — Ludo King Edition Board Renderer
+ */
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 const BOARD_SIZE = 15;
-const MAIN_PATH_SIZE = 52;
+const TOTAL_CELLS = 52;
+const TOTAL_STEPS = 57;
 
-// Steps considered "safe" (tokens cannot be killed here)
-const SAFE_STEPS = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
+/**
+ * Ludo King Standard Safe Cells
+ */
+const SAFE_CELLS = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
 
-// ─── Path Coordinates ─────────────────────────────────────────────────────────
-// Definitive 52-cell clockwise path for 15x15 board.
-// Green entry (Step 0) is [15, 7]. Red entry (Step 26) is [1, 9].
-const LUDO_PATH = [
-  // Green entry quadrant (Right -> Bottom)
-  [15,7], [15,8], [15,9], [14,9], [13,9], [12,9], [11,9], [10,9],
-  [9,10], [9,11], [9,12], [9,13], [9,14], [9,15], [8,15], [7,15],
-  // Red side quadrant (Bottom -> Left)
-  [6,15], [6,14], [6,13], [6,12], [6,11], [6,10], [5,9], [4,9], [3,9], [2,9],
-  [1,9], [1,8], [1,7], [2,7], [3,7], [4,7], [5,7], [6,7],
-  // Top quadrant (Left -> Top)
-  [7,6], [7,5], [7,4], [7,3], [7,2], [7,1], [8,1], [9,1],
-  [10,1], [10,2], [10,3], [10,4], [10,5], [10,6], [11,7], [12,7], [13,7], [14,7]
+/**
+ * Full Board Path Mapping (Pre-calculated Clockwise)
+ */
+const CLOCKWISE_PATH = [
+  /* 0 - 4  */ [9, 14], [9, 13], [9, 12], [9, 11], [9, 10], 
+  /* 5 - 10 */ [10, 9], [11, 9], [12, 9], [13, 9], [14, 9], [15, 9],
+  /* 11     */ [15, 8], 
+  /* 12 - 17*/ [15, 7], [14, 7], [13, 7], [12, 7], [11, 7], [10, 7],
+  /* 18 - 23*/ [9, 6], [9, 5], [9, 4], [9, 3], [9, 2], [9, 1],
+  /* 24     */ [8, 1], 
+  /* 25 - 30*/ [7, 1], [7, 2], [7, 3], [7, 4], [7, 5], [7, 6],
+  /* 31 - 36*/ [6, 7], [5, 7], [4, 7], [3, 7], [2, 7], [1, 7],
+  /* 37     */ [1, 8], 
+  /* 38 - 43*/ [1, 9], [2, 9], [3, 9], [4, 9], [5, 9], [6, 9],
+  /* 44 - 49*/ [7, 10], [7, 11], [7, 12], [7, 13], [7, 14], [7, 15],
+  /* 50 - 51*/ [8, 15], [9, 15] 
 ];
 
-const HOME_STRETCH = {
-  green: [[14,8],[13,8],[12,8],[11,8],[10,8]], // Mid-right row going left
-  red:   [[2,8],[3,8],[4,8],[5,8],[6,8]],     // Mid-left row going right
-};
-
-const ENTRY_STEP = { green: 0, red: 26 };
-const CENTER_HOME = [8, 8];
-
-const YARD_TOKEN_CELLS = {
-  green: [[11,2],[13,2],[11,4],[13,4]],   // Top-Right
-  red:   [[2,11],[4,11],[2,13],[4,13]],    // Bottom-Left
-  yellow: [[2,2],[4,2],[2,4],[4,4]],      // Top-Left
-  blue:   [[11,11],[13,11],[11,13],[13,13]], // Bottom-Right
-};
-
-function key(col, row) { return `${col},${row}`; }
-
-// ─── Classify each cell ────────────────────────────────────────────────────────
-function buildCellMap() {
-  const map = {};
-  for (let r = 1; r <= 15; r++) {
-    for (let c = 1; c <= 15; c++) {
-      let classes = ['cell'];
-      let type = 'path';
-      const k = key(c, r);
-
-      // 1. Zones (6x6 corners)
-      if (c >= 1 && c <= 6 && r >= 1 && r <= 6) classes.push('zone-red');
-      else if (c >= 10 && c <= 15 && r >= 1 && r <= 6) classes.push('zone-green');
-      else if (c >= 1 && c <= 6 && r >= 10 && r <= 15) classes.push('zone-yellow');
-      else if (c >= 10 && c <= 15 && r >= 10 && r <= 15) classes.push('zone-blue');
-
-      // 2. Yards (2x2 sub-grids)
-      if (((c==2||c==3||c==4||c==5)) && ((r==2||r==3||r==4||r==5))) classes.push('yard-inner-red');
-      if (((c==11||c==12||c==13||c==14)) && ((r==2||r==3||r==4||r==5))) classes.push('yard-inner-green');
-      if (((c==2||c==3||c==4||c==5)) && ((r==11||r==12||r==13||r==14))) classes.push('yard-inner-yellow');
-      if (((c==11||c==12||c==13||c==14)) && ((r==11||r==12||r==13||r==14))) classes.push('yard-inner-blue');
-
-      // 3. Center Cross
-      if (c >= 7 && c <= 9 && r >= 7 && r <= 9) {
-        if (c==8 && r==8) classes.push('center-mid');
-        else classes.push('center-home');
-      }
-
-      // 4. Corridors
-      if ((c >= 7 && c <= 9 && (r < 7 || r > 9)) || (r >= 7 && r <= 9 && (c < 7 || c > 9))) {
-        classes.push('path');
-      }
-
-      map[k] = { col: c, row: r, classes };
-    }
-  }
-
-  // Modifiers
-  SAFE_STEPS.forEach(idx => {
-    const [c, r] = LUDO_PATH[idx];
-    if (map[key(c,r)]) map[key(c,r)].classes.push('safe');
-  });
-
-  HOME_STRETCH.red.forEach(([c,r]) => { if (map[key(c,r)]) map[key(c,r)].classes.push('home-stretch-red'); });
-  HOME_STRETCH.green.forEach(([c,r]) => { if (map[key(c,r)]) map[key(c,r)].classes.push('home-stretch-green'); });
-
-  const [gc, gr] = LUDO_PATH[ENTRY_STEP.green]; if (map[key(gc,gr)]) map[key(gc,gr)].classes.push('path-green');
-  const [rc, rr] = LUDO_PATH[ENTRY_STEP.red]; if (map[key(rc,rr)]) map[key(rc,rr)].classes.push('path-red');
-
-  return map;
+// Aligned with P1 (Blue) at index 0 (Start is [15, 7])
+const ALIGNED_PATH = [];
+for (let i = 0; i < 52; i++) {
+    ALIGNED_PATH.push(CLOCKWISE_PATH[(i + 12) % 52]);
 }
 
-let boardCells = null;
+const HOME_STRETCH = {
+    blue:   [[14, 8], [13, 8], [12, 8], [11, 8], [10, 8]],
+    red:    [[8, 2], [8, 3], [8, 4], [8, 5], [8, 6]],
+    green:  [[2, 8], [3, 8], [4, 8], [5, 8], [6, 8]],
+    yellow: [[8, 14], [8, 13], [8, 12], [8, 11], [8, 10]]
+};
+
+const CENTER_HOME = [8, 8];
+
+const YARD_CELLS = {
+    blue:   [[11, 11], [13, 11], [11, 13], [13, 13]],
+    red:    [[11, 2], [13, 2], [11, 4], [13, 4]],
+    green:  [[2, 2], [4, 2], [2, 4], [4, 4]],
+    yellow: [[2, 11], [4, 11], [2, 13], [4, 13]]
+};
+
+function key(c, r) { return `${c},${r}`; }
+
+function buildCellMap() {
+    const map = {};
+    for (let r = 1; r <= 15; r++) {
+        for (let c = 1; c <= 15; c++) {
+            const k = key(c, r);
+            let classes = ['cell'];
+            
+            // Zones (Quadrants)
+            if (c >= 1 && c <= 6 && r >= 1 && r <= 6) classes.push('zone-green');
+            else if (c >= 10 && c <= 15 && r >= 1 && r <= 6) classes.push('zone-red');
+            else if (c >= 1 && c <= 6 && r >= 10 && r <= 15) classes.push('zone-yellow');
+            else if (c >= 10 && c <= 15 && r >= 10 && r <= 15) classes.push('zone-blue');
+
+            // Paths
+            if ((c >= 7 && c <= 9) || (r >= 7 && r <= 9)) classes.push('path-cell');
+
+            // Center area
+            if (c >= 7 && c <= 9 && r >= 7 && r <= 9) {
+                classes.push('home-center');
+                if (c === 8 && r === 8) classes.push('finish');
+            }
+
+            map[k] = { c, r, classes };
+        }
+    }
+
+    // Mark Safe Cells
+    SAFE_CELLS.forEach(idx => {
+        const [c, r] = ALIGNED_PATH[idx];
+        const k = key(c, r);
+        if (map[k]) map[k].classes.push('safe-cell');
+    });
+
+    // Mark Home Stretches
+    Object.keys(HOME_STRETCH).forEach(color => {
+        HOME_STRETCH[color].forEach(([c, r]) => {
+            const k = key(c, r);
+            if (map[k]) map[k].classes.push(`home-stretch-${color}`);
+        });
+    });
+
+    return map;
+}
+
 let cellElements = {};
 
 function initBoard() {
-  const boardEl = document.getElementById('ludo-board');
-  if (!boardEl) return;
-  
-  boardEl.innerHTML = '';
-  cellElements = {};
-  boardCells = buildCellMap();
+    const boardEl = document.getElementById('ludo-board');
+    if (!boardEl) return;
+    boardEl.innerHTML = '';
+    cellElements = {};
+    const map = buildCellMap();
 
-  for (let r = 1; r <= 15; r++) {
-    for (let c = 1; c <= 15; c++) {
-      const k = key(c, r);
-      const cellData = boardCells[k];
-      const el = document.createElement('div');
-      el.className = [...new Set(cellData.classes)].join(' ');
-      el.id = `cell-${c}-${r}`;
-      boardEl.appendChild(el);
-      cellElements[k] = el;
+    for (let r = 1; r <= 15; r++) {
+        for (let c = 1; c <= 15; c++) {
+            const k = key(c, r);
+            const el = document.createElement('div');
+            el.className = map[k].classes.join(' ');
+            el.id = `cell-${c}-${r}`;
+            boardEl.appendChild(el);
+            cellElements[k] = el;
+        }
     }
-  }
 }
 
 function renderGameState(gameState, playerIndex, playerColor, validMoves) {
-  if (!cellElements || Object.keys(cellElements).length === 0) initBoard();
+    if (Object.keys(cellElements).length === 0) initBoard();
 
-  // Clear 
-  Object.values(cellElements).forEach(el => {
-    Array.from(el.querySelectorAll('.token')).forEach(t => t.remove());
-    el.classList.remove('highlight-valid');
-  });
-
-  // Render tokens
-  ['green', 'red'].forEach(color => {
-    const tokens = gameState.tokens[color];
-    tokens.forEach((token, idx) => {
-      let cellKey = null;
-      if (token.isHome) {
-        cellKey = key(...CENTER_HOME);
-      } else if (token.steps < 0) {
-        const [yc, yr] = YARD_TOKEN_CELLS[color][idx];
-        cellKey = key(yc, yr);
-      } else if (token.steps >= 52) {
-        const [hc, hr] = HOME_STRETCH[color][token.steps - 52];
-        cellKey = key(hc, hr);
-      } else {
-        const absIdx = (ENTRY_STEP[color] + token.steps) % 52;
-        const [pc, pr] = LUDO_PATH[absIdx];
-        cellKey = key(pc, pr);
-      }
-
-      const cellEl = cellElements[cellKey];
-      if (cellEl) {
-        const tokenEl = document.createElement('div');
-        tokenEl.className = `token token-${color}`;
-        if (validMoves && validMoves.includes(token.id)) {
-          tokenEl.classList.add('clickable');
-          tokenEl.onclick = () => window.GameSocket.moveToken(token.id);
-          cellEl.classList.add('highlight-valid');
-        }
-        cellEl.appendChild(tokenEl);
-      }
+    // Clear and redraw
+    Object.values(cellElements).forEach(el => {
+        el.querySelectorAll('.token').forEach(t => t.remove());
+        el.classList.remove('can-move');
+        el.classList.remove('stacked');
     });
-  });
 
-  // Home counts
-  ['green', 'red'].forEach(color => {
-    const el = document.getElementById(`home-count-${color}`);
-    if (el) el.textContent = `${gameState.tokens[color].filter(t => t.isHome).length} / 4`;
-  });
+    gameState.players.forEach((player, pIdx) => {
+        const color = player.color;
+        const tokensByCell = {};
+
+        player.tokens.forEach((token, tIdx) => {
+            let cellKey = null;
+            if (token.state === 'BASE') {
+                const [c, r] = YARD_CELLS[color][tIdx];
+                cellKey = key(c, r);
+            } else if (token.state === 'HOME') {
+                cellKey = key(...CENTER_HOME);
+            } else {
+                if (token.stepsMoved > 51) {
+                    const idx = token.stepsMoved - 52;
+                    const coords = HOME_STRETCH[color][idx];
+                    if (coords) cellKey = key(...coords);
+                } else {
+                    const absIdx = (player.startIndex + token.stepsMoved - 1) % 52;
+                    const [c, r] = ALIGNED_PATH[absIdx];
+                    cellKey = key(c, r);
+                }
+            }
+
+            if (!tokensByCell[cellKey]) tokensByCell[cellKey] = [];
+            tokensByCell[cellKey].push({ token, color });
+        });
+
+        for (const [cellKey, tokens] of Object.entries(tokensByCell)) {
+            const cellEl = cellElements[cellKey];
+            if (!cellEl) continue;
+
+            if (tokens.length > 1) cellEl.classList.add('stacked');
+
+            tokens.forEach(({ token, color }) => {
+                const tokenEl = document.createElement('div');
+                tokenEl.className = `token token-${color}`;
+                
+                if (validMoves && validMoves.includes(token.id)) {
+                    tokenEl.classList.add('clickable');
+                    cellEl.classList.add('can-move');
+                    tokenEl.onclick = (e) => {
+                        e.stopPropagation();
+                        window.GameSocket.moveToken(token.id);
+                    };
+                }
+                cellEl.appendChild(tokenEl);
+            });
+        }
+    });
+
+    // Dispatch update to UI for stats
+    if (window.UI) window.UI.updateTurnIndicator(gameState, playerIndex);
 }
 
-window.LudoBoard = {
-  initBoard,
-  renderGameState,
-  setTokenClickCallback: (cb) => { /* legacy fallback */ }
-};
+window.LudoBoard = { initBoard, renderGameState };
