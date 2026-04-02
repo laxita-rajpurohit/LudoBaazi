@@ -22,13 +22,6 @@ socket.on('connect', () => {
   console.log('Connected to server:', socket.id);
   // Always identify ourselves to the server
   socket.emit('identify', { viewerId });
-  
-  // If we were in a room, try to re-sync automatically
-  const savedRoom = localStorage.getItem('LUDO_CURRENT_ROOM');
-  if (savedRoom) {
-    console.log('Attempting to re-sync with room:', savedRoom);
-    joinRoom(savedRoom);
-  }
 });
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -118,19 +111,15 @@ socket.on('game_start', (gameState) => {
   if (viewHome) viewHome.classList.add('hidden');
   if (viewGame) viewGame.classList.remove('hidden');
   
-  // Safe Initialization: Ensure scripts are loaded
-  setTimeout(() => {
-    if (typeof UI !== 'undefined') UI.init();
-    if (typeof LudoBoard !== 'undefined') {
-      LudoBoard.initBoard();
-      LudoBoard.setTokenClickCallback(moveToken);
-      // Initial render
-      updateGameState(gs);
-    }
-    
-    const roomCodeEl = document.getElementById('topbar-room-code');
-    if (roomCodeEl) roomCodeEl.textContent = currentRoom;
-  }, 0);
+  // Initialization: Ensure scripts are executed
+  console.log('Ludobaazi: Game starting...', gs);
+  
+  UI.init();
+  LudoBoard.initBoard();
+  updateGameState(gs);
+  
+  const roomCodeEl = document.getElementById('topbar-room-code');
+  if (roomCodeEl) roomCodeEl.textContent = currentRoom;
 });
 
 socket.on('dice_rolled', ({ diceValue, validMoves, autoPass, gameState }) => {
@@ -144,7 +133,8 @@ socket.on('dice_rolled', ({ diceValue, validMoves, autoPass, gameState }) => {
 });
 
 socket.on('game_updated', ({ gameState }) => {
-  updateGameState(gameState);
+  const gs = gameState.gameState || gameState;
+  updateGameState(gs);
 });
 
 socket.on('game_over', ({ winnerIndex, winnerColor }) => {
