@@ -56,19 +56,34 @@ export const Dice: React.FC<DiceProps> = ({ value, isRolling, onClick, className
   };
 
   const currentRotation = rotations[value] || rotations[1];
-  const diceSize = 48; 
+  const diceSize = 44; 
   const halfSize = diceSize / 2;
+  const isClickable = !!onClick && !isRolling;
 
   return (
     <div 
-      className={cn("relative cursor-pointer group", className)}
+      className={cn(
+        "relative cursor-pointer group", 
+        isClickable && "hover:scale-110 active:scale-95 transition-transform",
+        isRolling && "pointer-events-none",
+        className
+      )}
       style={{ 
         width: diceSize, 
         height: diceSize,
-        perspective: '800px' 
+        perspective: '1000px' 
       }}
       onClick={onClick}
     >
+      {/* Click To Roll Glow */}
+      {isClickable && (
+        <motion.div
+          layoutId="dice-glow"
+          className="absolute -inset-2 bg-white/20 rounded-xl blur-md z-0"
+          animate={{ opacity: [0.2, 0.5, 0.2] }}
+          transition={{ repeat: Infinity, duration: 1.5 }}
+        />
+      )}
       {/* Dynamic Drop Shadow */}
       <motion.div
         className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-4/5 h-2 bg-black/30 rounded-[100%] blur-md"

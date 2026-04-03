@@ -184,7 +184,7 @@ io.on('connection', (socket) => {
        setTimeout(() => {
          io.to(code).emit('game_updated', { gameState: result.state });
          checkAITurn(code);
-       }, 800);
+       }, 1500); // 1.5s delay to see the number
     }
   };
   socket.on('roll_dice', onRollDice);

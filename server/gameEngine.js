@@ -39,15 +39,32 @@ class GameEngine {
       status: 'playing',
       winner: null,
       moveHistory: [],
-      diceRolled: false
+      diceRolled: false,
+      turnsWithoutSix: players.map(() => 0)
     };
     return gameState;
   }
 
   /**
    * Roll the dice (Server Only)
+   * Implements a balanced luck system.
    */
-  static rollDice() {
+  static rollDice(gameState) {
+    if (!gameState || !gameState.turnsWithoutSix) return Math.floor(Math.random() * 6) + 1;
+    
+    const turnCount = gameState.turnsWithoutSix[gameState.currentTurn] || 0;
+    
+    // Balanced Luck: If stuck in base for 3+ turns, increase 6 probability
+    if (turnCount >= 2) {
+      const rand = Math.random();
+      // Normally 1/6 (16.6%).
+      // At 2 turns: 25% for a 6.
+      // At 4+ turns: 40% for a 6.
+      const threshold = turnCount >= 4 ? 0.6 : 0.75;
+      if (rand > threshold) return 6;
+      return Math.floor(Math.random() * 5) + 1; // 1-5
+    }
+
     return Math.floor(Math.random() * 6) + 1;
   }
 
@@ -186,6 +203,19 @@ class GameEngine {
       message: logMessage,
       timestamp: Date.now()
     });
+
+    // Update turnsWithoutSix
+    if (diceValue === 6) {
+      gameState.turnsWithoutSix[gameState.currentTurn] = 0;
+    } else {
+      const player = gameState.players[gameState.currentTurn];
+      const allInBase = player.tokens.every(t => t.state === 'BASE');
+      if (allInBase) {
+        gameState.turnsWithoutSix[gameState.currentTurn]++;
+      } else {
+        gameState.turnsWithoutSix[gameState.currentTurn] = 0;
+      }
+    }
 
     // Handle Turn Change
     if (!extraTurn && gameState.status !== 'finished') {

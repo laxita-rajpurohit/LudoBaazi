@@ -30,8 +30,18 @@ export const HOME_STRETCH: Record<PlayerColor, [number, number][]> = {
 };
 
 export function getTokenPosition(color: PlayerColor, token: Token) {
-  if (token.state === 'BASE') return 'BASE';
-  if (token.state === 'HOME') return 'HOME';
+  // If in BASE and finished walking back (stepsMoved 0), return BASE slot
+  if (token.state === 'BASE' && token.stepsMoved === 0) return 'BASE';
+  
+  if (token.state === 'HOME') {
+    const homeCoords: Record<PlayerColor, [number, number]> = {
+      red: [7, 6],
+      green: [6, 7],
+      yellow: [7, 8],
+      blue: [8, 7]
+    };
+    return homeCoords[color];
+  }
   
   if (token.stepsMoved > 51) {
     const idx = token.stepsMoved - 52; // 52, 53, 54, 55, 56 -> 0, 1, 2, 3, 4

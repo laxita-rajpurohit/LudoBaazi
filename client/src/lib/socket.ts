@@ -10,6 +10,7 @@ interface SocketStore {
   myColor: PlayerColor | null;
   validMoves: string[];
   errorMessage: string | null;
+  rollingPlayerId: string | null;
   connect: () => void;
   createRoom: () => void;
   joinRoom: (code: string) => void;
@@ -30,6 +31,7 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
   myColor: null,
   validMoves: [],
   errorMessage: null,
+  rollingPlayerId: null,
 
   connect: () => {
     let viewerId = sessionStorage.getItem('LUDO_VIEWER_ID');
@@ -58,16 +60,17 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
         gameState: gs,
         myPlayerIndex: me ? gs.players.indexOf(me) : null,
         myColor: me ? me.color : null,
-        validMoves: []
+        validMoves: [],
+        rollingPlayerId: null
       });
     });
 
     socketInstance.on('dice_rolled', ({ validMoves, gameState }) => {
-      set({ gameState, validMoves: validMoves || [] });
+      set({ gameState, validMoves: validMoves || [], rollingPlayerId: null });
     });
 
     socketInstance.on('game_updated', ({ gameState }) => {
-      set({ gameState, validMoves: [] });
+      set({ gameState, validMoves: [], rollingPlayerId: null });
     });
 
     socketInstance.on('game_over', ({ winnerIndex }) => {
@@ -91,8 +94,19 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
   },
 
   rollDice: () => {
-    const { currentRoom } = get();
-    if (currentRoom) socketInstance.emit('roll_dice', { code: currentRoom });
+    const { currentRoom, gameState, myPlayerIndex, socket, rollingPlayerId } = get();
+    // Guard: Prevent double-click if already rolling or not allowed
+    if (currentRoom && gameState && myPlayerIndex !== null && !rollingPlayerId) {
+      set({ rollingPlayerId: socket?.id || null });
+      socketInstance.emit('roll_dice', { code: currentRoom });
+
+      // Safety Timeout: If server doesn't respond in 4s, clear animation
+      setTimeout(() => {
+        if (get().rollingPlayerId === socket?.id) {
+          set({ rollingPlayerId: null });
+        }
+      }, 4000);
+    }
   },
 
   moveToken: (tokenId: string) => {

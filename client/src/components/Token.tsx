@@ -7,36 +7,39 @@ interface TokenProps {
   color: PlayerColor;
   stepsMoved?: number;
   state?: 'BASE' | 'ACTIVE' | 'HOME';
+  offset?: number;
   className?: string;
   onClick?: () => void;
 }
 
 import { getTokenPosition } from '@/lib/boardMapping';
 
-export const Token: React.FC<TokenProps> = ({ color, stepsMoved = 0, state = 'BASE', className, onClick }) => {
+export const Token: React.FC<TokenProps> = ({ color, stepsMoved = 0, state = 'BASE', offset = 0, className, onClick }) => {
   const [visualSteps, setVisualSteps] = React.useState(stepsMoved);
   
-  // Step-by-step animation logic
+  // Step-by-step animation logic (Forward and Backward)
   React.useEffect(() => {
-    if (state === 'BASE') {
-      setVisualSteps(0);
-      return;
-    }
     if (visualSteps !== stepsMoved) {
-      const timer = setTimeout(() => {
-        setVisualSteps(prev => {
-          if (prev < stepsMoved) return prev + 1;
-          if (prev > stepsMoved) return prev - 1;
-          return prev;
-        });
-      }, 150); // Speed of walking
-      return () => clearTimeout(timer);
+      // If server says we are in BASE (killed), but we aren't at step 0 yet, walk back.
+      const isWalkingBack = (state === 'BASE' && visualSteps > 0);
+      const target = isWalkingBack ? 0 : stepsMoved;
+
+      if (visualSteps !== target) {
+        const timer = setTimeout(() => {
+          setVisualSteps(prev => {
+            if (prev < target) return prev + 1;
+            if (prev > target) return prev - 1;
+            return prev;
+          });
+        }, isWalkingBack ? 50 : 150); // Run back faster (50ms) than walking forward (150ms)
+        return () => clearTimeout(timer);
+      }
     }
   }, [stepsMoved, visualSteps, state]);
 
   const pos = getTokenPosition(color, { id: '', playerId: '', state, stepsMoved: visualSteps, position: 0 });
-  const isOverlay = Array.isArray(pos);
-  const [row, col] = isOverlay ? pos : [0, 0];
+  const isOverlay = Array.isArray(pos) || (state === 'BASE' && visualSteps > 0);
+  const [row, col] = Array.isArray(pos) ? pos : [0, 0];
 
   const colorStyles: Record<PlayerColor, any> = {
     red: {
@@ -72,8 +75,8 @@ export const Token: React.FC<TokenProps> = ({ color, stepsMoved = 0, state = 'BA
       layout
       initial={false}
       animate={isOverlay ? {
-        top: `${(row / 15) * 100}%`,
-        left: `${(col / 15) * 100}%`,
+        top: `${(row / 15) * 100 + (offset * 1.2)}%`,
+        left: `${(col / 15) * 100 + (offset * 1.2)}%`,
         scale: [1, 1.05, 1],
       } : {
         scale: [1, 1.05, 1],

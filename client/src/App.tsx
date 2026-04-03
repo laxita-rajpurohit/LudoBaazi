@@ -14,30 +14,19 @@ export default function App() {
   } = useSocketStore();
 
   const [joinCode, setJoinCode] = useState('');
-  const [rollingPlayerId, setRollingPlayerId] = useState<string | null>(null);
 
   useEffect(() => {
     connect();
   }, [connect]);
-
   // Handle fake rolling animation before server dice response arrives
-  useEffect(() => {
-    if (gameState?.diceValue) {
-      setRollingPlayerId(null);
-    }
-  }, [gameState?.diceValue]);
-
-  const handleRollClick = (playerId: string) => {
-    setRollingPlayerId(playerId);
-    rollDice();
-  };
+  const rollingPlayerId = useSocketStore(s => s.rollingPlayerId);
 
   const getLabelPosition = (color: string) => {
     switch (color) {
-      case 'red': return 'top-[12%] left-[6%]';
-      case 'green': return 'top-[12%] right-[6%]';
-      case 'yellow': return 'bottom-[12%] right-[6%]';
-      case 'blue': return 'bottom-[12%] left-[6%]';
+      case 'red': return 'top-[12.5%] left-[7%]';
+      case 'green': return 'top-[12.5%] right-[7%]';
+      case 'yellow': return 'bottom-[12.5%] right-[7%]';
+      case 'blue': return 'bottom-[12.5%] left-[7%]';
       default: return '';
     }
   };
@@ -245,14 +234,14 @@ export default function App() {
         return (
           <React.Fragment key={p.id}>
             {/* Player Label */}
-            <div className={cn("absolute z-30 font-black text-xl uppercase italic drop-shadow-lg", labelPos)}>
+            <div className={cn("absolute z-30 font-bold text-sm uppercase italic drop-shadow-md", labelPos)}>
                <span className={cn(
-                 "px-4 py-1 rounded-lg backdrop-blur-md border border-white/10",
-                 p.color === 'red' ? 'text-red-400' : 
-                 p.color === 'green' ? 'text-green-400' :
-                 p.color === 'blue' ? 'text-blue-400' : 'text-yellow-400'
+                 "px-3 py-0.5 rounded-md backdrop-blur-md border border-white/10 shadow-sm",
+                 p.color === 'red' ? 'text-red-400 bg-red-900/20' : 
+                 p.color === 'green' ? 'text-green-400 bg-green-900/20' :
+                 p.color === 'blue' ? 'text-blue-400 bg-blue-900/20' : 'text-yellow-400 bg-yellow-900/20'
                )}>
-                 Player {idx + 1} ({p.color})
+                 P{idx + 1}: {p.color}
                </span>
             </div>
 
@@ -266,19 +255,19 @@ export default function App() {
                     `0 20px 45px ${p.color === 'red' ? 'rgba(239,68,68,0.6)' : p.color === 'green' ? 'rgba(34,197,94,0.6)' : p.color === 'blue' ? 'rgba(59,130,246,0.6)' : 'rgba(234,179,8,0.6)'}`,
                     "0 15px 35px rgba(0,0,0,0.4)"
                   ] : undefined,
-                  scale: isCurrentPlayerTurn ? 1.05 : 0.9
+                  scale: isCurrentPlayerTurn ? 1.05 : 0.85
                 }}
                 transition={{ repeat: Infinity, duration: 2.5 }}
                 className={cn(
                   "p-1.5 rounded-[1.5rem] flex items-center gap-2 border-[3px] shadow-2xl backdrop-blur-sm transition-all",
-                  isCurrentPlayerTurn ? "bg-white/20 border-white" : "bg-black/30 border-white/10 grayscale-[0.5] opacity-70"
+                  isCurrentPlayerTurn ? "bg-white/20 border-white" : "bg-black/30 border-white/10 grayscale-[0.5] opacity-50"
                 )}
               >
                 <div className={cn("p-2 rounded-xl border-2 border-white/30 shadow-[0_4px_10px_rgba(0,0,0,0.3)] bg-gradient-to-br", trayGradient)}>
                   <Dice 
                     value={isCurrentPlayerTurn ? (gameState.diceValue || 1) : 1} 
                     isRolling={rollingPlayerId === p.id} 
-                    onClick={isCurrentPlayerTurn && isMyTurn ? () => handleRollClick(p.id) : undefined}
+                    onClick={isCurrentPlayerTurn && isMyTurn ? () => useSocketStore.getState().rollDice() : undefined}
                     className="w-10 h-10 rounded-md" 
                   />
                 </div>

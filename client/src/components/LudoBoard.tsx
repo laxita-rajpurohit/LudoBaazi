@@ -4,14 +4,16 @@ import { type PlayerColor, type GameState, type Player, type Token } from '@/typ
 import { Token as TokenIcon } from './Token';
 import { Star } from 'lucide-react';
 import { useSocketStore } from '@/lib/socket';
+import { getTokenPosition } from '@/lib/boardMapping';
 
 export const LudoBoard: React.FC = () => {
   const gameState = useSocketStore((s: any) => s.gameState as GameState);
   const validMoves = useSocketStore((s: any) => s.validMoves as string[]);
   const moveToken = useSocketStore((s: any) => s.moveToken as (id: string) => void);
 
-  const activeTokens: { token: Token; color: PlayerColor }[] = [];
+  const activeTokensWithOffsets: { token: Token; color: PlayerColor; offset: number }[] = [];
   const baseTokens: Record<PlayerColor, number> = { red: 4, green: 4, yellow: 4, blue: 4 };
+  const cellTracker: Record<string, number> = {};
 
   if (gameState && gameState.players) {
     baseTokens.red = 0; baseTokens.green = 0; baseTokens.yellow = 0; baseTokens.blue = 0;
@@ -20,7 +22,11 @@ export const LudoBoard: React.FC = () => {
         if (t.state === 'BASE') {
           baseTokens[player.color]++;
         } else {
-          activeTokens.push({ token: t, color: player.color });
+          const pos = getTokenPosition(player.color, t);
+          const key = Array.isArray(pos) ? `${pos[0]}-${pos[1]}` : 'base';
+          const offset = cellTracker[key] || 0;
+          cellTracker[key] = offset + 1;
+          activeTokensWithOffsets.push({ token: t, color: player.color, offset });
         }
       });
     });
@@ -146,12 +152,13 @@ export const LudoBoard: React.FC = () => {
 
         {/* Token Overlay Layer */}
         <div className="absolute inset-0 pointer-events-none z-40">
-          {activeTokens.map(({ token, color }) => (
+          {activeTokensWithOffsets.map(({ token, color, offset }) => (
             <TokenIcon
               key={token.id}
               color={color}
               state={token.state}
               stepsMoved={token.stepsMoved}
+              offset={offset}
               className={cn("pointer-events-auto", validMoves.includes(token.id) && "ring-4 ring-yellow-400 rounded-full animate-pulse")}
               onClick={() => handleTokenClick(token.id)}
             />
@@ -169,17 +176,6 @@ export const LudoBoard: React.FC = () => {
           </svg>
         </div>
       </div>
-      
-      {gameState?.players[1] && (
-        <div className="absolute -top-8 right-8 font-bold text-white text-xl drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-          Player 2 ({gameState.players[1].color})
-        </div>
-      )}
-      {gameState?.players[0] && (
-        <div className="absolute -bottom-10 left-8 font-bold text-white text-xl drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-          Player 1 ({gameState.players[0].color})
-        </div>
-      )}
     </div>
   );
 };

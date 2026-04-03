@@ -110,7 +110,7 @@ function processRoll(code, socketId) {
   if (player.id !== socketId) return { success: false, message: 'Not your turn.' };
   if (gs.diceRolled) return { success: false, message: 'Dice already rolled.' };
 
-  const diceValue = GameEngine.rollDice();
+  const diceValue = GameEngine.rollDice(gs);
   gs.diceValue = diceValue;
   gs.diceRolled = true;
 
