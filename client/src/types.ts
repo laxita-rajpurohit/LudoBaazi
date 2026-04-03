@@ -14,6 +14,7 @@ export interface Player {
   color: PlayerColor;
   startIndex: number;
   tokens: Token[];
+  preferredColor?: string;
 }
 
 export interface GameState {
@@ -25,6 +26,7 @@ export interface GameState {
   winner: number | null;
   diceRolled: boolean;
   validMoves: string[];
+  timerEndTime?: number;
 }
 
 export const BOARD_SIZE = 15;

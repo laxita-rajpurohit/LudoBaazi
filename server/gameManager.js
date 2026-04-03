@@ -23,11 +23,11 @@ function generateCode() {
 /**
  * Create a new room for a multiplayer game
  */
-function createRoom(socketId, viewerId) {
+function createRoom(socketId, viewerId, preferredColor) {
   const code = generateCode();
   const room = {
     code,
-    players: [{ id: socketId, viewerId, playerIndex: 0, color: COLORS[0] }],
+    players: [{ id: socketId, viewerId, playerIndex: 0, color: COLORS[0], preferredColor }],
     gameState: null,
     status: 'waiting',
     isAI: false
@@ -59,7 +59,7 @@ function createAIGame(socketId, viewerId) {
 /**
  * Join an existing room
  */
-function joinRoom(code, socketId, viewerId) {
+function joinRoom(code, socketId, viewerId, preferredColor) {
   const room = rooms.get(code);
   if (!room) return { success: false, message: 'Room not found.' };
 
@@ -67,6 +67,7 @@ function joinRoom(code, socketId, viewerId) {
   const existingPlayer = room.players.find(p => p.viewerId === viewerId);
   if (existingPlayer) {
     existingPlayer.id = socketId;
+    if (preferredColor) existingPlayer.preferredColor = preferredColor;
     console.log(`[Room] ${code} — Player re-joined: ${viewerId}`);
     return { success: true, room, isRejoin: true };
   }
@@ -80,7 +81,8 @@ function joinRoom(code, socketId, viewerId) {
     id: socketId,
     viewerId,
     playerIndex,
-    color: COLORS[playerIndex]
+    color: COLORS[playerIndex],
+    preferredColor
   });
 
   console.log(`[Join] ${viewerId} joined room ${code}`);
@@ -110,7 +112,24 @@ function processRoll(code, socketId) {
   if (player.id !== socketId) return { success: false, message: 'Not your turn.' };
   if (gs.diceRolled) return { success: false, message: 'Dice already rolled.' };
 
-  const diceValue = GameEngine.rollDice(gs);
+  let diceValue = GameEngine.rollDice(gs);
+
+  // ── Cap consecutive 6s at 2 ─────────────────────────────────────────────────
+  // Prevents unfair streaks: on the 3rd consecutive 6, force a non-6 result.
+  gs.consecutiveSixes = gs.consecutiveSixes || 0;
+  if (diceValue === 6) {
+    if (gs.consecutiveSixes >= 2) {
+      diceValue = Math.floor(Math.random() * 5) + 1; // force 1–5
+      gs.consecutiveSixes = 0;
+      console.log(`[Dice] ${code} — 6 streak capped! Forced to ${diceValue}`);
+    } else {
+      gs.consecutiveSixes += 1;
+    }
+  } else {
+    gs.consecutiveSixes = 0;
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   gs.diceValue = diceValue;
   gs.diceRolled = true;
 
@@ -118,16 +137,16 @@ function processRoll(code, socketId) {
   
   let autoPass = false;
   if (validMoves.length === 0) {
-    // If no moves and not a 6, pass turn
     if (diceValue !== 6) {
       gs.currentTurn = (gs.currentTurn + 1) % gs.players.length;
+      gs.consecutiveSixes = 0; // reset streak when turn changes
     }
     gs.diceValue = null;
     gs.diceRolled = false;
     autoPass = true;
   }
 
-  console.log(`[Dice] ${code} — ${player.color} rolled ${diceValue}`);
+  console.log(`[Dice] ${code} — ${player.color} rolled ${diceValue} (streak: ${gs.consecutiveSixes})`);
   return { success: true, diceValue, validMoves, autoPass, state: gs };
 }
 
@@ -146,8 +165,14 @@ function processMove(code, socketId, tokenId) {
   const isValid = GameEngine.isValidMove(gs, tokenId, gs.diceValue);
   if (!isValid) return { success: false, message: 'Invalid move selection.' };
 
+  const prevTurn = gs.currentTurn;
   const { extraTurn, logMessage } = GameEngine.applyMove(gs, tokenId, gs.diceValue);
-  
+
+  // Reset consecutive 6s streak when turn passes to the other player
+  if (gs.currentTurn !== prevTurn) {
+    gs.consecutiveSixes = 0;
+  }
+
   console.log(`[Move] ${code} — ${logMessage}`);
   return { success: true, state: gs, extraTurn };
 }

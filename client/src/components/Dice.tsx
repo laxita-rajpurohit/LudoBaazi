@@ -63,8 +63,8 @@ export const Dice: React.FC<DiceProps> = ({ value, isRolling, onClick, className
   return (
     <div 
       className={cn(
-        "relative cursor-pointer group", 
-        isClickable && "hover:scale-110 active:scale-95 transition-transform",
+        "relative group", 
+        isClickable ? "cursor-pointer" : "cursor-default",
         isRolling && "pointer-events-none",
         className
       )}
@@ -73,17 +73,8 @@ export const Dice: React.FC<DiceProps> = ({ value, isRolling, onClick, className
         height: diceSize,
         perspective: '1000px' 
       }}
-      onClick={onClick}
+      onClick={isRolling ? undefined : onClick}
     >
-      {/* Click To Roll Glow */}
-      {isClickable && (
-        <motion.div
-          layoutId="dice-glow"
-          className="absolute -inset-2 bg-white/20 rounded-xl blur-md z-0"
-          animate={{ opacity: [0.2, 0.5, 0.2] }}
-          transition={{ repeat: Infinity, duration: 1.5 }}
-        />
-      )}
       {/* Dynamic Drop Shadow */}
       <motion.div
         className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-4/5 h-2 bg-black/30 rounded-[100%] blur-md"

@@ -52,3 +52,21 @@ export function getTokenPosition(color: PlayerColor, token: Token) {
   const absIdx = (offset + token.stepsMoved - 1) % 52;
   return PATH[absIdx >= 0 ? absIdx : 0];
 }
+
+export const getPlayerGlowColor = (color: PlayerColor) => {
+  return {
+    red: '#ff4b2b',
+    green: '#11998e',
+    yellow: '#fbc02d',
+    blue: '#00c6ff'
+  }[color];
+};
+
+export const getDiceTrayGradient = (color: PlayerColor) => {
+  return {
+    red: 'from-red-500 to-red-700',
+    green: 'from-green-500 to-green-700',
+    yellow: 'from-yellow-400 to-yellow-600',
+    blue: 'from-blue-500 to-blue-700'
+  }[color];
+};

@@ -5,13 +5,56 @@ import { Token as TokenIcon } from './Token';
 import { Star } from 'lucide-react';
 import { useSocketStore } from '@/lib/socket';
 import { getTokenPosition } from '@/lib/boardMapping';
+import { soundService } from '@/lib/soundService';
 
-export const LudoBoard: React.FC = () => {
+interface LudoBoardProps {
+  visualColorMap?: Record<string, string>;
+  boardRotation?: number;
+}
+
+export const LudoBoard: React.FC<LudoBoardProps> = ({ visualColorMap = {}, boardRotation = 0 }) => {
   const gameState = useSocketStore((s: any) => s.gameState as GameState);
   const validMoves = useSocketStore((s: any) => s.validMoves as string[]);
   const moveToken = useSocketStore((s: any) => s.moveToken as (id: string) => void);
 
-  const activeTokensWithOffsets: { token: Token; color: PlayerColor; offset: number }[] = [];
+  const [killedTokens, setKilledTokens] = React.useState<Map<string, Token>>(new Map());
+  const prevTokens = React.useRef(new Map<string, Token>());
+
+  // Track state transitions to capture "Kills" and orchestrate the backward slide
+  React.useEffect(() => {
+    if (!gameState || !gameState.players) return;
+    let changed = false;
+    const newKilled = new Map(killedTokens);
+
+    const currentTokens = new Map<string, Token>();
+    gameState.players.forEach(p => {
+      p.tokens.forEach(t => {
+        currentTokens.set(t.id, t);
+        const pTok = prevTokens.current.get(t.id);
+        if (pTok && (pTok.state === 'ACTIVE' || pTok.state === 'HOME') && t.state === 'BASE') {
+          // It was killed! Keep rendering it in the overlay, but pass the updated 0 stepsMoved
+          newKilled.set(t.id, { ...pTok, state: 'BASE', stepsMoved: 0 });
+          changed = true;
+          soundService.playKillSound();
+        }
+      });
+    });
+
+    if (changed) {
+      setKilledTokens(newKilled);
+    }
+    prevTokens.current = currentTokens;
+  }, [gameState]);
+
+  const removeKilledToken = (id: string) => {
+    setKilledTokens(prev => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const activeTokensWithOffsets: { token: Token; color: PlayerColor; offset: number; isKilled?: boolean }[] = [];
   const baseTokens: Record<PlayerColor, number> = { red: 4, green: 4, yellow: 4, blue: 4 };
   const cellTracker: Record<string, number> = {};
 
@@ -19,9 +62,11 @@ export const LudoBoard: React.FC = () => {
     baseTokens.red = 0; baseTokens.green = 0; baseTokens.yellow = 0; baseTokens.blue = 0;
     gameState.players.forEach((player: Player) => {
       player.tokens.forEach((t: Token) => {
-        if (t.state === 'BASE') {
+        const isCurrentlySlidingBack = killedTokens.has(t.id);
+        
+        if (t.state === 'BASE' && !isCurrentlySlidingBack) {
           baseTokens[player.color]++;
-        } else {
+        } else if (!isCurrentlySlidingBack) {
           const pos = getTokenPosition(player.color, t);
           const key = Array.isArray(pos) ? `${pos[0]}-${pos[1]}` : 'base';
           const offset = cellTracker[key] || 0;
@@ -29,6 +74,15 @@ export const LudoBoard: React.FC = () => {
           activeTokensWithOffsets.push({ token: t, color: player.color, offset });
         }
       });
+    });
+
+    // Add sliding back tokens to the active overlay
+    killedTokens.forEach((t, id) => {
+      const player = gameState.players.find(p => p.tokens.some(tk => tk.id === id));
+      if (player) {
+         // Fake the offset to 0 since it's moving fast
+         activeTokensWithOffsets.push({ token: t, color: player.color, offset: 0, isKilled: true });
+      }
     });
   }
 
@@ -40,6 +94,8 @@ export const LudoBoard: React.FC = () => {
 
   const renderBase = (color: PlayerColor, row: number, col: number) => {
     const tokensInBase = baseTokens[color];
+    const visualTheme = (visualColorMap[color] || color) as PlayerColor;
+
     const baseStyles: Record<PlayerColor, string> = {
       red: 'bg-gradient-to-br from-[#ff4b2b] to-[#ff416c] border-[#8e0000]',
       green: 'bg-gradient-to-br from-[#11998e] to-[#38ef7d] border-[#004d40]',
@@ -59,16 +115,26 @@ export const LudoBoard: React.FC = () => {
 
     const isMyBaseTurn = gameState?.players[gameState.currentTurn]?.color === color;
 
+    const activeGlows: Record<PlayerColor, string> = {
+      red: 'shadow-[0_0_25px_#ff4b2b,inset_0_4px_12px_rgba(0,0,0,0.4)] ring-4 ring-[#ff4b2b]/50',
+      green: 'shadow-[0_0_25px_#38ef7d,inset_0_4px_12px_rgba(0,0,0,0.4)] ring-4 ring-[#38ef7d]/50',
+      yellow: 'shadow-[0_0_25px_#fbc02d,inset_0_4px_12px_rgba(0,0,0,0.4)] ring-4 ring-[#fbc02d]/50',
+      blue: 'shadow-[0_0_25px_#00c6ff,inset_0_4px_12px_rgba(0,0,0,0.4)] ring-4 ring-[#00c6ff]/50',
+    };
+
     return (
       <div 
         className={cn(
-          "absolute w-[40%] h-[40%] rounded-2xl border-4 shadow-[inset_0_4px_12px_rgba(0,0,0,0.4)] flex items-center justify-center p-3 overflow-hidden transition-all duration-500",
-          baseStyles[color],
-          isMyBaseTurn && "ring-8 ring-white/30 scale-[1.02] z-20",
+          "absolute w-[40%] h-[40%] rounded-2xl border-4 flex items-center justify-center p-3 overflow-hidden transition-all duration-500",
+          baseStyles[visualTheme],
+          isMyBaseTurn ? activeGlows[visualTheme] + " scale-[1.03] z-20" : "shadow-[inset_0_4px_12px_rgba(0,0,0,0.4)]",
           row === 0 ? 'top-0' : 'bottom-0',
           col === 0 ? 'left-0' : 'right-0'
         )}
       >
+        {isMyBaseTurn && (
+          <div className="absolute inset-0 bg-white/10 animate-pulse pointer-events-none" />
+        )}
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
         <div className="w-full h-full bg-white rounded-xl shadow-[0_6px_12px_rgba(0,0,0,0.3)] grid grid-cols-2 grid-rows-2 p-2.5 gap-2.5 relative z-10">
           {Array.from({ length: 4 }).map((_, i) => {
@@ -79,11 +145,12 @@ export const LudoBoard: React.FC = () => {
                 {tkn ? (
                   <TokenIcon 
                     color={color} 
-                    className={cn("scale-125", isValid && "ring-4 ring-yellow-400 rounded-full animate-pulse cursor-pointer")} 
+                    themeColor={visualTheme}
+                    className={cn("scale-125", isValid && "ring-4 ring-yellow-400 rounded-full animate-pulse pointer-events-auto")} 
                     onClick={() => isValid ? handleTokenClick(tkn.id) : undefined}
                   />
                 ) : (
-                  <div className={cn("w-4 h-4 rounded-full shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] opacity-20", dotColor[color])} />
+                  <div className={cn("w-4 h-4 rounded-full shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] opacity-20", dotColor[visualTheme])} />
                 )}
               </div>
             );
@@ -98,15 +165,30 @@ export const LudoBoard: React.FC = () => {
     let icon = null;
     let arrow = null;
 
-    if (r === 7 && c > 0 && c < 6) cellColor = "bg-gradient-to-r from-[#ff4b2b] to-[#ff416c] shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]";
-    if (r === 7 && c > 8 && c < 14) cellColor = "bg-gradient-to-l from-[#f8ff00] to-[#fbc02d] shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]";
-    if (c === 7 && r > 0 && r < 6) cellColor = "bg-gradient-to-b from-[#11998e] to-[#38ef7d] shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]";
-    if (c === 7 && r > 8 && r < 14) cellColor = "bg-gradient-to-t from-[#00c6ff] to-[#0072ff] shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]";
+    // Convert logical coordinate paths to dynamic visual mappings
+    const getThemeFor = (logical: PlayerColor) => (visualColorMap[logical] || logical) as PlayerColor;
 
-    if (r === 6 && c === 1) cellColor = "bg-gradient-to-br from-[#ff4b2b] to-[#ff416c] shadow-lg";
-    if (r === 1 && c === 8) cellColor = "bg-gradient-to-br from-[#11998e] to-[#38ef7d] shadow-lg";
-    if (r === 8 && c === 13) cellColor = "bg-gradient-to-br from-[#f8ff00] to-[#fbc02d] shadow-lg";
-    if (r === 13 && c === 6) cellColor = "bg-gradient-to-br from-[#00c6ff] to-[#0072ff] shadow-lg";
+    const redTheme = getThemeFor('red');
+    const greenTheme = getThemeFor('green');
+    const yellowTheme = getThemeFor('yellow');
+    const blueTheme = getThemeFor('blue');
+
+    const themeColors: Record<PlayerColor, string> = {
+      red: 'from-[#ff4b2b] to-[#ff416c] shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]',
+      green: 'from-[#11998e] to-[#38ef7d] shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]',
+      yellow: 'from-[#f8ff00] to-[#fbc02d] shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]',
+      blue: 'from-[#00c6ff] to-[#0072ff] shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]',
+    };
+
+    if (r === 7 && c > 0 && c < 6) cellColor = `bg-gradient-to-r ${themeColors[redTheme]}`;
+    if (r === 7 && c > 8 && c < 14) cellColor = `bg-gradient-to-l ${themeColors[yellowTheme]}`;
+    if (c === 7 && r > 0 && r < 6) cellColor = `bg-gradient-to-b ${themeColors[greenTheme]}`;
+    if (c === 7 && r > 8 && r < 14) cellColor = `bg-gradient-to-t ${themeColors[blueTheme]}`;
+
+    if (r === 6 && c === 1) cellColor = `bg-gradient-to-br ${themeColors[redTheme].replace('shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]', 'shadow-lg')}`;
+    if (r === 1 && c === 8) cellColor = `bg-gradient-to-br ${themeColors[greenTheme].replace('shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]', 'shadow-lg')}`;
+    if (r === 8 && c === 13) cellColor = `bg-gradient-to-br ${themeColors[yellowTheme].replace('shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]', 'shadow-lg')}`;
+    if (r === 13 && c === 6) cellColor = `bg-gradient-to-br ${themeColors[blueTheme].replace('shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]', 'shadow-lg')}`;
 
     const stars = [[8, 2], [2, 6], [6, 12], [12, 8]];
     if (stars.some(([sr, sc]) => sr === r && sc === c)) {
@@ -152,28 +234,43 @@ export const LudoBoard: React.FC = () => {
 
         {/* Token Overlay Layer */}
         <div className="absolute inset-0 pointer-events-none z-40">
-          {activeTokensWithOffsets.map(({ token, color, offset }) => (
+          {activeTokensWithOffsets.map(({ token, color, offset, isKilled }) => (
             <TokenIcon
               key={token.id}
               color={color}
+              themeColor={(visualColorMap[color] || color) as PlayerColor}
               state={token.state}
-              stepsMoved={token.stepsMoved}
+              stepsMoved={isKilled ? 0 : token.stepsMoved} // When sliding back, target=0
+              killedStartSteps={isKilled ? token.stepsMoved : undefined}
               offset={offset}
+              boardRotation={boardRotation}
               className={cn("pointer-events-auto", validMoves.includes(token.id) && "ring-4 ring-yellow-400 rounded-full animate-pulse")}
               onClick={() => handleTokenClick(token.id)}
+              onWalkBackComplete={isKilled ? () => removeKilledToken(token.id) : undefined}
             />
           ))}
         </div>
 
         <div className="absolute top-[40%] left-[40%] w-[20%] h-[20%] bg-white shadow-[0_0_30px_rgba(0,0,0,0.3)] overflow-hidden border-4 border-white z-20 rounded-sm">
-          <svg viewBox="0 0 100 100" className="w-full h-full">
-            <polygon points="0,0 50,50 100,0" className="fill-[#11998e] filter drop-shadow-[0_0_2px_rgba(0,0,0,0.2)]" />
-            <polygon points="100,0 50,50 100,100" className="fill-[#fbc02d] filter drop-shadow-[0_0_2px_rgba(0,0,0,0.2)]" />
-            <polygon points="100,100 50,50 0,100" className="fill-[#0072ff] filter drop-shadow-[0_0_2px_rgba(0,0,0,0.2)]" />
-            <polygon points="0,100 50,50 0,0" className="fill-[#ff4b2b] filter drop-shadow-[0_0_2px_rgba(0,0,0,0.2)]" />
-            <circle cx="50" cy="50" r="12" className="fill-white/10" />
-            <circle cx="50" cy="50" r="6" className="fill-white/20" />
-          </svg>
+          {(() => {
+             const getHex = (c: string) => ({
+               red: '#ff4b2b',
+               green: '#11998e',
+               yellow: '#fbc02d',
+               blue: '#0072ff'
+             }[c] || '#ffffff');
+             
+             return (
+               <svg viewBox="0 0 100 100" className="w-full h-full">
+                 <polygon points="0,0 50,50 100,0" fill={getHex(visualColorMap['green'] || 'green')} className="filter drop-shadow-[0_0_2px_rgba(0,0,0,0.2)]" />
+                 <polygon points="100,0 50,50 100,100" fill={getHex(visualColorMap['yellow'] || 'yellow')} className="filter drop-shadow-[0_0_2px_rgba(0,0,0,0.2)]" />
+                 <polygon points="100,100 50,50 0,100" fill={getHex(visualColorMap['blue'] || 'blue')} className="filter drop-shadow-[0_0_2px_rgba(0,0,0,0.2)]" />
+                 <polygon points="0,100 50,50 0,0" fill={getHex(visualColorMap['red'] || 'red')} className="filter drop-shadow-[0_0_2px_rgba(0,0,0,0.2)]" />
+                 <circle cx="50" cy="50" r="12" className="fill-white/10" />
+                 <circle cx="50" cy="50" r="6" className="fill-white/20" />
+               </svg>
+             );
+          })()}
         </div>
       </div>
     </div>
