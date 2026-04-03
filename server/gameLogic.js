@@ -12,15 +12,9 @@
 // Safe cells on the main path (0-indexed)
 const SAFE_CELLS = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
 
-// Where each color enters the board (main path index)
-const ENTRY_CELL = { green: 0, red: 26 };
+const ENTRY_CELL = { red: 0, green: 13, yellow: 26, blue: 39 };
 
-// Home stretch start positions on main path (after which they enter home column)
-// Green travels 0→51, then 52→56 (green home stretch), 57 = home
-// Red travels 26→51, then 0→25, then 52+26=78→82, 83 = home
-// We encode home stretch as: mainPath 0-51, then colorOffset * 6 + (1..5)
-// colorOffset: green=0, red=1
-const COLOR_INDEX = { green: 0, red: 1 };
+const COLOR_INDEX = { red: 0, green: 1, yellow: 2, blue: 3 };
 
 // How far from entry to reach the home stretch entrance
 // Green: entry=0, home stretch starts after cell 51 (full lap), then cells 52-56
@@ -175,23 +169,22 @@ function handleDiceRoll(gameState, playerIndex) {
 
 // ─── Init Game State ───────────────────────────────────────────────────────────
 function createInitialState(roomCode, players) {
+  const tokens = {};
+  
+  players.forEach((p, idx) => {
+    const color = p.color;
+    tokens[color] = [
+      { id: `${color.charAt(0)}0`, steps: -1, isHome: false },
+      { id: `${color.charAt(0)}1`, steps: -1, isHome: false },
+      { id: `${color.charAt(0)}2`, steps: -1, isHome: false },
+      { id: `${color.charAt(0)}3`, steps: -1, isHome: false },
+    ];
+  });
+
   return {
     roomCode,
     players, // [{ id, playerIndex, color }]
-    tokens: {
-      green: [
-        { id: 'g0', steps: -1, isHome: false },
-        { id: 'g1', steps: -1, isHome: false },
-        { id: 'g2', steps: -1, isHome: false },
-        { id: 'g3', steps: -1, isHome: false },
-      ],
-      red: [
-        { id: 'r0', steps: -1, isHome: false },
-        { id: 'r1', steps: -1, isHome: false },
-        { id: 'r2', steps: -1, isHome: false },
-        { id: 'r3', steps: -1, isHome: false },
-      ],
-    },
+    tokens,
     currentTurn: 0, // index into players[]
     diceValue: null,
     diceRolled: false,
